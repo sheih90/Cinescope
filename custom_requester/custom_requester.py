@@ -3,6 +3,8 @@ import json
 import requests
 import logging
 import os
+from pydantic import BaseModel
+from constants import RED, GREEN, RESET
 
 class CustomRequester:
     """Базовый класс для отправки HTTP-запросов с логированием"""
@@ -12,39 +14,47 @@ class CustomRequester:
         "Accept": "application/json"
     }
 
-    def __init__(self, session, base_url):
-        """
-        Инициализация кастомного реквестера.
-        :param session: Объект requests.Session.
-        :param base_url: Базовый URL API.
-        """
-        self.session = session
-        self.base_url = base_url
-        self.headers = self.base_headers.copy()
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
+    def __init__(self, session: requests.Session = None, base_url: str = "", base_headers: dict = None):
 
-    def send_request(self, method, endpoint, data=None, params=None, expected_status=200, need_logging=True):
+        self.base_url = base_url
+        self.base_headers = base_headers or {}
+
+        # Если передана сессия — используем её, иначе создаём новую
+        if session:
+            self.session = session
+        else:
+            self.session = requests.Session()
+
+        self.session.headers.update(self.base_headers)
+
+        self.logger = logging.getLogger(__name__)
+
+    def send_request(
+            self,
+            method: str,
+            endpoint: str,
+            data=None,
+            params=None,
+            expected_status: int = 200,
+            need_logging: bool = True
+    ):
         """
-        Универсальный метод для отправки запросов.
-        :param method: HTTP метод (GET, POST, PUT, DELETE и т.д.).
-        :param endpoint: Эндпоинт (например, "/login").
-        :param data: Тело запроса (JSON-данные).
-        :param expected_status: Ожидаемый статус-код (по умолчанию 200).
-        :param need_logging: Флаг для логирования (по умолчанию True).
-        :return: Объект ответа requests.Response.
+        Универсальный метод отправки запросов.
+
+        :param  dict или Pydantic BaseModel
         """
         url = f"{self.base_url}{endpoint}"
+        if isinstance(data, BaseModel):
+            data = data.model_dump(mode='json', exclude_unset=True)
+
         response = self.session.request(
             method,
             url,
             json=data,
-            params=params,
-            headers=self.headers
+            params=params
         )
 
-        if need_logging:
-            self.log_request_and_response(response)
+        self.log_request_and_response(response)
 
         if response.status_code != expected_status:
             raise ValueError(f"Unexpected status code: {response.status_code}. Expected: {expected_status}")

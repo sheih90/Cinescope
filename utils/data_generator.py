@@ -42,3 +42,21 @@ class DataGenerator:
         random.shuffle(password)
 
         return ''.join(password)
+
+    @staticmethod
+    def generate_user_data(email=None, full_name=None, password=None):
+        """Генерация данных для регистрации пользователя"""
+        return {
+            "email": email or DataGenerator.generate_random_email(),
+            "fullName": full_name or DataGenerator.generate_random_name(),
+            "password": password or DataGenerator.generate_random_password(),
+            "passwordRepeat": password or DataGenerator.generate_random_password()
+        }
+
+    @staticmethod
+    def generate_login_data(email=None, password=None):
+        """Генерация данных для логина"""
+        return {
+            "email": email or DataGenerator.generate_random_email(),
+            "password": password or DataGenerator.generate_random_password()
+        }

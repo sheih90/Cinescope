@@ -13,6 +13,9 @@ class ApiManager:
         :param session: HTTP-сессия, используемая всеми API-классами.
         """
         self.session = session
-        self.auth = AuthAPI(session)      # ✅ auth.register_user(...)
-        self.user = UserAPI(session)      # ✅ user.get_user_info(...)
+        self.auth = AuthAPI(session)      # auth.register_user(...)
+        self.user = UserAPI(session)      # user.get_user_info(...)
         self.movies = MoviesAPI(session)
+
+    def close_session(self):
+        self.session.close()

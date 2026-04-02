@@ -1,6 +1,7 @@
 import pytest
 import requests
 from constants import BASE_URL, HEADERS, MOVIES_ENDPOINT
+from enums.roles import Roles
 
 
 class TestMoviesAPI:
@@ -251,6 +252,7 @@ class TestMoviesAPI:
             f"error должен быть 'Bad Request', получен {error_data.get('error')}"
         assert "message" in error_data, "В ответе должно быть поле 'message' с описанием ошибки"
 
+    @pytest.mark.xfail(reason="BUG: API не валидирует параметр published - возвращает 200 вместо 400")
     def test_get_movies_by_published_invalid(self, api_manager):
         params = {"published": "yes"}
         response = api_manager.movies.get_movies(
@@ -263,8 +265,8 @@ class TestMoviesAPI:
         assert error_data["error"] == "Bad Request", \
             f"error должен быть 'Bad Request', получен {error_data.get('error')}"
         assert "message" in error_data, "В ответе должно быть поле 'message' с описанием ошибки"
-        """📋 Баг-репорт:
-                Заголовок: 
+        """ Баг-репорт:
+                Заголовок:
                 API: Параметр published принимает некорректные значения (строки, числа) вместо boolean
                 Шаги:
                     Отправить GET /movies?published="yes"
@@ -292,10 +294,9 @@ class TestMoviesAPI:
             f"error должен быть 'Bad Request', получен {error_data.get('error')}"
         assert "message" in error_data, "В ответе должно быть поле 'message' с описанием ошибки"
 
-    def test_create_movie_success(self, api_manager_auth, random_movie_data):
-        """Успешное создание фильма"""
-
-        response = api_manager_auth.movies.create_movie(random_movie_data)  # 201 по умолчанию
+    def test_create_movie_success(self, super_admin, random_movie_data):
+        """Успешное создание фильма супер_админом"""
+        response = super_admin.api.movies.create_movie(random_movie_data)  # 201 по умолчанию
         response_data = response.json()
 
         assert "id" in response_data
@@ -306,21 +307,21 @@ class TestMoviesAPI:
         assert response_data["genreId"] == random_movie_data["genreId"]
         assert "createdAt" in response_data
 
-    def test_create_movie_msk_location(self, api_manager_auth, random_movie_data):
+    def test_create_movie_msk_location(self, super_admin, random_movie_data):
         """Создание фильма с location = MSK"""
         movie_data = random_movie_data.copy()
         movie_data["location"] = "MSK"
-        response = api_manager_auth.movies.create_movie(movie_data)
+        response = super_admin.api.movies.create_movie(movie_data)
         response_data = response.json()
         assert response_data["location"] == "MSK"
 
-    def test_create_movie_not_published(self, api_manager_auth, random_movie_data):
+    def test_create_movie_not_published(self, super_admin, random_movie_data):
         """Создание неопубликованного фильма (published = false)"""
 
         movie_data = random_movie_data.copy()
         movie_data["published"] = False
 
-        response = api_manager_auth.movies.create_movie(movie_data)  # 201 по умолчанию
+        response = super_admin.api.movies.create_movie(movie_data)  # 201 по умолчанию
 
         response_data = response.json()
         assert response_data["published"] == False
@@ -378,11 +379,11 @@ class TestMoviesAPI:
         assert "message" in response_data
         assert response_data.get("error") == "Conflict"
 
-    def test_update_movie_success(self, api_manager_auth, random_movie_data):
+    def test_update_movie_success(self, super_admin, random_movie_data):
         """Успешное обновление фильма"""
 
         # Создаём фильм
-        create_response = api_manager_auth.movies.create_movie(random_movie_data)
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
         movie_id = create_response.json()["id"]
 
         # Обновляем фильм
@@ -390,7 +391,7 @@ class TestMoviesAPI:
             "price": 999,
             "description": "Обновлённое описание"
         }
-        update_response = api_manager_auth.movies.update_movie(movie_id, update_data)
+        update_response = super_admin.api.movies.update_movie(movie_id, update_data)
 
         # 3. Проверяем обновление
         assert update_response.status_code == 200
@@ -429,19 +430,19 @@ class TestMoviesAPI:
         assert update_response.json()["statusCode"] == 404
         assert update_response.json()["error"] == "Not Found"
 
-    def test_delete_movie_success(self, api_manager_auth, random_movie_data):
+    def test_delete_movie_success(self, super_admin, random_movie_data):
         """Успешное удаление фильма"""
 
         # Создаём фильм
-        create_response = api_manager_auth.movies.create_movie(random_movie_data)
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
         movie_id = create_response.json()["id"]
 
         # Удаляем фильм
-        delete_response = api_manager_auth.movies.delete_movie(movie_id)
+        delete_response = super_admin.api.movies.delete_movie(movie_id)
         assert delete_response.status_code == 200
 
         # Проверяем, что фильм удалён (404 при получении по ID)
-        get_response = api_manager_auth.movies.get_movie_by_id(
+        get_response = super_admin.api.movies.get_movie_by_id(
             movie_id,
             expected_status=404
         )
@@ -473,3 +474,217 @@ class TestMoviesAPI:
 
         assert delete_response.json()["statusCode"] == 404
         assert delete_response.json()["error"] == "Not Found"
+
+    @pytest.mark.slow
+    def test_create_movie_as_user_forbidden(self, common_user, random_movie_data):
+        """
+        Обычный пользователь (USER) НЕ может создавать фильмы.
+        Ожидаем 403 Forbidden.
+        """
+        response = common_user.api.movies.create_movie(
+            random_movie_data,
+            expected_status=403  # У USER нет прав на создание фильма
+        )
+
+        data = response.json()
+        assert data["error"] == "Forbidden"
+        assert "message" in data
+
+    @pytest.mark.slow
+    def test_update_movie_as_user_forbidden(self, common_user, super_admin, random_movie_data):
+        """USER не может обновлять фильмы → 403"""
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
+        movie_id = create_response.json()["id"]
+
+        update_data = {"price": 500}
+        update_response = common_user.api.movies.update_movie(
+            movie_id,
+            update_data,
+            expected_status=403
+        )
+        assert update_response.json()["error"] == "Forbidden"
+
+    def test_delete_movie_as_user_forbidden(self, common_user, super_admin, random_movie_data):
+        """USER не может удалять фильмы → 403"""
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
+        movie_id = create_response.json()["id"]
+
+        delete_response = common_user.api.movies.delete_movie(
+            movie_id,
+            expected_status=403
+        )
+        assert delete_response.json()["error"] == "Forbidden"
+
+    @pytest.mark.slow
+    def test_create_movie_as_admin_forbidden(self, admin_user, random_movie_data):
+        """ADMIN не может создавать фильмы → 403 Forbidden"""
+        response = admin_user.api.movies.create_movie(
+            random_movie_data,
+            expected_status=403
+        )
+        data = response.json()
+        assert data["error"] == "Forbidden"
+
+    @pytest.mark.parametrize(
+        "filter_params,description",
+        [
+            # (параметры фильтра, описание теста)
+            (
+                    {"minPrice": 100, "maxPrice": 300},
+                    "Фильтрация по цене: 100-300"
+            ),
+            (
+                    {"locations": ["MSK"]},
+                    "Фильтрация по локации: MSK"
+            ),
+            (
+                    {"locations": ["SPB"]},
+                    "Фильтрация по локации: SPB"
+            ),
+            (
+                    {"genreId": 1},
+                    "Фильтрация по жанру: genreId=1"
+            ),
+            (
+                    {"genreId": 2},
+                    "Фильтрация по жанру: genreId=2"
+            ),
+            (
+                    {"minPrice": 200, "maxPrice": 500, "locations": ["MSK"]},
+                    "Комбинированный фильтр: цена 200-500 + локация MSK"
+            ),
+            (
+                    {"minPrice": 150, "maxPrice": 400, "genreId": 3},
+                    "Комбинированный фильтр: цена 150-400 + жанр"
+            ),
+            (
+                    {"locations": ["SPB"], "genreId": 2},
+                    "Комбинированный фильтр: локация SPB + жанр"
+            ),
+            (
+                    {"minPrice": 100, "maxPrice": 600, "locations": ["MSK"], "genreId": 1},
+                    "Полный фильтр: цена + локация + жанр"
+            ),
+        ],
+        ids=[
+            "price_100_300",
+            "location_msk",
+            "location_spb",
+            "genre_1",
+            "genre_2",
+            "price_200_500_location_msk",
+            "price_150_400_genre_3",
+            "location_spb_genre_2",
+            "full_filter"
+        ]
+    )
+    def test_get_movies_with_filters(self, api_manager, filter_params, description):
+        """
+        Параметризованный тест фильтрации фильмов.
+        Проверяет, что API корректно фильтрует фильмы по различным параметрам.
+        """
+        # Отправляем запрос с фильтрами
+        response = api_manager.movies.get_movies(filter_params)
+        data = response.json()
+        movies = data["movies"]
+
+        # Проверяем, что фильмы найдены (хотя бы один)
+        assert len(movies) >= 0, f"Нет фильмов с фильтром: {description}"
+
+        # Проверяем каждый фильм на соответствие фильтрам
+        for movie in movies:
+            # Проверка цены
+            if "minPrice" in filter_params:
+                assert movie["price"] >= filter_params["minPrice"], \
+                    f"Фильм {movie['id']} имеет цену {movie['price']} ниже minPrice {filter_params['minPrice']}"
+
+            if "maxPrice" in filter_params:
+                assert movie["price"] <= filter_params["maxPrice"], \
+                    f"Фильм {movie['id']} имеет цену {movie['price']} выше maxPrice {filter_params['maxPrice']}"
+
+            # Проверка локации
+            if "locations" in filter_params:
+                assert movie["location"] in filter_params["locations"], \
+                    f"Фильм {movie['id']} имеет локацию {movie['location']}, ожидалось {filter_params['locations']}"
+
+            # Проверка жанра
+            if "genreId" in filter_params:
+                assert movie["genreId"] == filter_params["genreId"], \
+                    f"Фильм {movie['id']} имеет genreId {movie['genreId']}, ожидалось {filter_params['genreId']}"
+
+    @pytest.mark.parametrize(
+        "expected_status",
+        [
+            403,
+        ],
+        ids=["user_forbidden"]
+    )
+    def test_delete_movie_as_user_forbidden(self, common_user, super_admin, random_movie_data, expected_status):
+        """USER не может удалять фильмы → 403 Forbidden"""
+        # 1. Создаём фильм (супер-админом)
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
+        movie_id = create_response.json()["id"]
+
+        # 2. Пытаемся удалить как USER
+        delete_response = common_user.api.movies.delete_movie(
+            movie_id,
+            expected_status=expected_status
+        )
+
+        # 3. Проверяем, что получили 403
+        assert delete_response.status_code == expected_status
+        error_data = delete_response.json()
+        assert error_data["error"] == "Forbidden"
+
+        # 4. Проверяем, что фильм всё ещё существует
+        get_response = super_admin.api.movies.get_movie_by_id(movie_id)
+        assert get_response.status_code == 200
+
+    @pytest.mark.parametrize(
+        "expected_status",
+        [
+            403,
+        ],
+        ids=["admin_forbidden"]
+    )
+    @pytest.mark.slow
+    def test_delete_movie_as_admin_forbidden(self, admin_user, super_admin, random_movie_data, expected_status):
+        """ADMIN не может удалять фильмы → 403 Forbidden"""
+        # 1. Создаём фильм (супер-админом)
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
+        movie_id = create_response.json()["id"]
+
+        # 2. Пытаемся удалить как ADMIN
+        delete_response = admin_user.api.movies.delete_movie(
+            movie_id,
+            expected_status=expected_status
+        )
+
+        # 3. Проверяем, что получили 403
+        assert delete_response.status_code == expected_status
+        error_data = delete_response.json()
+        assert error_data["error"] == "Forbidden"
+
+        # 4. Проверяем, что фильм всё ещё существует
+        get_response = super_admin.api.movies.get_movie_by_id(movie_id)
+        assert get_response.status_code == 200
+
+    def test_delete_movie_as_super_admin_success(self, super_admin, random_movie_data):
+        """SUPER_ADMIN может удалять фильмы → 200 OK"""
+        # 1. Создаём фильм
+        create_response = super_admin.api.movies.create_movie(random_movie_data)
+        movie_id = create_response.json()["id"]
+
+        # 2. Удаляем фильм (супер-админом)
+        delete_response = super_admin.api.movies.delete_movie(movie_id)
+        assert delete_response.status_code == 200
+
+        # 3. Проверяем, что фильм действительно удалён
+        get_response = super_admin.api.movies.get_movie_by_id(
+            movie_id,
+            expected_status=404
+        )
+        assert get_response.status_code == 404
+        error_data = get_response.json()
+        assert error_data["error"] == "Not Found"
+

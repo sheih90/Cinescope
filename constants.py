@@ -13,8 +13,14 @@ ADMIN_CREDENTIALS = {
     "password": "asdqwe123Q"
 }
 
+INVALID_PASSWORD = "WrongPassword123!"
+
 MOVIES_ENDPOINT = "/movies"
 LOGIN_ENDPOINT = "/login"
 REGISTER_ENDPOINT = "/register"
 USER_ENDPOINT = "/user"
+
+RED = "\033[91m"
+GREEN = "\033[92m"
+RESET = "\033[0m"
 

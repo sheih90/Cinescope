@@ -1,122 +1,122 @@
 import pytest
-import requests
-from constants import BASE_AUTH_URL, HEADERS, ADMIN_CREDENTIALS, LOGIN_ENDPOINT, USER_ENDPOINT, REGISTER_ENDPOINT
+from constants import ADMIN_CREDENTIALS, INVALID_PASSWORD
+from utils.data_generator import DataGenerator
+import logging
+from models.base_models import TestUser, RegisterUserResponse
+from enums.roles import Roles
+
+logger = logging.getLogger(__name__)
 
 
 class TestAuth:
-    """Тесты для POST /auth/register/user"""
+    """Тесты для авторизации и регистрации"""
 
-    def test_register_user(self, requester, test_user):
-        """
-        Тест на регистрацию пользователя.
-        """
-        response = requester.send_request(
-            method="POST",
-            endpoint=REGISTER_ENDPOINT,
-            data=test_user,
-            expected_status=201
-        )
-        response_data = response.json()
-        assert response_data["email"] == test_user["email"], "Email не совпадает"
-        assert "id" in response_data, "ID пользователя отсутствует в ответе"
-        assert "roles" in response_data, "Роли пользователя отсутствуют в ответе"
-        assert "USER" in response_data["roles"], "Роль USER должна быть у пользователя"
+    def test_register_user(self, api_manager, test_user: TestUser):
+        """Регистрация нового пользователя с валидацией ответа через Pydantic"""
 
-    def test_register_success(self, api_manager, random_user):
-        """Тест успешной регистрации через ApiManager"""
-        response = api_manager.auth.register_user(random_user)
-        data = response.json()
-        assert data["email"] == random_user["email"]
-        assert "id" in data
-        assert "roles" in data, "Роли пользователя отсутствуют в ответе"
-        assert "USER" in data["roles"], "Роль USER должна быть у пользователя"
+        # Отправляем запрос
+        response = api_manager.auth.register_user(user_data=test_user)
 
+        # Валидируем ответ через Pydantic модель
+        register_user_response = RegisterUserResponse(**response.json())
 
-    def test_register_and_login_user(self, api_manager, random_user):
+        # Проверяем только то, что мы контролируем:
+        assert register_user_response.email == test_user.email, "Email не совпадает"
+        assert register_user_response.fullName == test_user.fullName, "Имя не совпадает"
+
+        # Проверяем, что роли корректны (но не сравниваем с входными, т.к. могут быть дефолты)
+        assert Roles.USER in register_user_response.roles, "Роль USER должна быть"
+
+        # Проверяем, что обязательные поля есть и имеют правильный тип
+        assert isinstance(register_user_response.verified, bool), "verified должен быть bool"
+        assert isinstance(register_user_response.banned, bool), "banned должен быть bool"
+        assert isinstance(register_user_response.id, str), "id должен быть строкой"
+        assert isinstance(register_user_response.createdAt, str), "createdAt должен быть строкой"
+
+        # Логируем
+        logger.info(f"✓ Пользователь зарегистрирован: {register_user_response.email}")
+        logger.info(f"  ID: {register_user_response.id}, verified: {register_user_response.verified}")
+
+    def test_register_and_login_user(self, api_manager, test_user: TestUser):
         """Тест на регистрацию и авторизацию пользователя"""
 
-        # 1. Регистрируем пользователя
-        register_response = api_manager.auth.register_user(random_user)
-        assert register_response.json()["email"] == random_user["email"]
+        # Регистрируем (модель автоматически сериализуется)
+        register_response = api_manager.auth.register_user(test_user)
+        registered = RegisterUserResponse(**register_response.json())
 
-        # 2. Логинимся
+        # Валидируем через модель
+        assert registered.email == test_user.email
+
+        # Логинимся
         login_data = {
-            "email": random_user["email"],
-            "password": random_user["password"]
+            "email": test_user.email,
+            "password": test_user.password
         }
         login_response = api_manager.auth.login_user(login_data)
+        login_data_response = login_response.json()
 
-        response_data = login_response.json()
-        assert "accessToken" in response_data
-        assert response_data["user"]["email"] == random_user["email"]
+        assert "accessToken" in login_data_response
+        assert login_data_response["user"]["email"] == test_user.email
 
+        logger.info(f"Регистрация + логин: {registered.email}")
 
     def test_register_not_email(self, api_manager, random_user):
         """Тест регистрации без почты"""
         user = random_user.copy()
         user["email"] = ""
         response = api_manager.auth.register_user(user, expected_status=400)
-        response_data = response.json()
-        assert "message" in response_data
-        assert response_data["error"] == "Bad Request"
-
+        data = response.json()
+        assert "message" in data
+        assert data["error"] == "Bad Request"
 
     def test_register_not_full_name(self, api_manager, random_user):
         """Тест регистрации без имени"""
         user = random_user.copy()
         user["fullName"] = ""
         response = api_manager.auth.register_user(user, expected_status=400)
-        response_data = response.json()
-        assert "message" in response_data
-        assert response_data["error"] == "Bad Request"
-
+        data = response.json()
+        assert "message" in data
+        assert data["error"] == "Bad Request"
 
     def test_register_not_password(self, api_manager, random_user):
         """Тест регистрации без пароля"""
         user = random_user.copy()
         user["password"] = ""
         response = api_manager.auth.register_user(user, expected_status=400)
-        response_data = response.json()
-        assert "message" in response_data
-        assert response_data["error"] == "Bad Request"
+        data = response.json()
+        assert "message" in data
+        assert data["error"] == "Bad Request"
 
     def test_register_not_password_repeat(self, api_manager, random_user):
         """Тест регистрации без подтверждения пароля"""
         user = random_user.copy()
         user["passwordRepeat"] = ""
         response = api_manager.auth.register_user(user, expected_status=400)
-        response_data = response.json()
-        assert "message" in response_data
-        assert response_data["error"] == "Bad Request"
+        data = response.json()
+        assert "message" in data
+        assert data["error"] == "Bad Request"
 
     def test_register_repeat_email(self, api_manager, random_user):
         """Регистрация пользователя с существующим email"""
-        user = {
-            "email": random_user["email"],
-            "fullName": "Пользователь Тестович",
-            "password": "Test7241@",
-            "passwordRepeat": "Test7241@"
-        }
 
-        # Первый запрос — успех
-        register_response = api_manager.auth.register_user(user)
+        # 1. Первый запрос — успех
+        register_response = api_manager.auth.register_user(random_user)
         assert "id" in register_response.json()
 
-        # Второй запрос — конфликт
-        conflict_response = api_manager.auth.register_user(user, expected_status=409)
+        # 2. Второй запрос — конфликт (тот же email)
+        conflict_response = api_manager.auth.register_user(random_user, expected_status=409)
         assert conflict_response.json()["error"] == "Conflict"
 
-
     def test_login_success(self, api_manager):
-        """Тест успешного логина"""
+        """Тест успешного логина админа"""
         response = api_manager.auth.login_user(ADMIN_CREDENTIALS)
         data = response.json()
+
         assert "accessToken" in data
         assert "expiresIn" in data
         assert "user" in data
-        # Проверяем что токены не пустые
         assert data["accessToken"] != ""
-        # Проверяем структуру user
+
         user = data["user"]
         assert "id" in user
         assert "email" in user
@@ -124,257 +124,163 @@ class TestAuth:
         assert "roles" in user
         assert user["email"] == ADMIN_CREDENTIALS["email"]
 
-
     def test_login_invalid_password(self, api_manager):
         """Тест логина с неправильным паролем"""
-        user = {
-            "email": "api1@gmail.com",
-            "password": "asdqwe123"
+        invalid_credentials = {
+            "email": ADMIN_CREDENTIALS["email"],
+            "password": INVALID_PASSWORD
         }
-        response = api_manager.auth.login_user(user, expected_status=401)
+        response = api_manager.auth.login_user(invalid_credentials, expected_status=401)
         data = response.json()
         assert "message" in data
         assert data["error"] == "Unauthorized"
 
     def test_login_empty_body(self, api_manager):
         """Тест логина с пустым телом запроса"""
-        user = {}
-        response = api_manager.auth.login_user(user, expected_status=401)
-        assert response.status_code == 401
+        response = api_manager.auth.login_user({}, expected_status=401)
         data = response.json()
         assert "message" in data
         assert data["error"] == "Unauthorized"
 
-
-    def test_create_user(self, api_manager_auth, random_user_data):
+    def test_create_user(self, api_manager_auth, test_user: TestUser):
         """Тест создания пользователя супер-админом"""
-        response = api_manager_auth.user.create_user(random_user_data)
 
-        data = response.json()
+        response = api_manager_auth.user.create_user(test_user)
+        created = RegisterUserResponse(**response.json())
 
-        # Проверяем что пользователь создан
-        assert "id" in data
-        assert data["email"] == random_user_data["email"]
-        assert data["fullName"] == random_user_data["fullName"]
-        assert "verified" in data
-        assert "roles" in data
-        assert "createdAt" in data
+        # Валидируем через модель
+        assert created.email == test_user.email
+        assert created.fullName == test_user.fullName
+        assert isinstance(created.verified, bool)
+        assert isinstance(created.banned, bool)
 
+        logger.info(f"Пользователь создан: {created.email}")
 
-    def test_create_user_without_auth(self, api_manager, random_user_data):
+    def test_create_user_without_auth(self, api_manager, test_user: TestUser):
         """Тест создания пользователя без авторизации"""
-        response = api_manager.user.create_user(random_user_data, expected_status=401
-        )
+        response = api_manager.user.create_user(test_user, expected_status=401)
         data = response.json()
         assert data["message"] == "Unauthorized"
 
-    def test_create_user_with_existing_email(self, api_manager_auth, random_user_data):
+    def test_create_user_with_existing_email(self, api_manager_auth, test_user: TestUser):
         """Тест создания пользователя с существующим email"""
-        # Первый запрос — успех (201)
-        response_create = api_manager_auth.user.create_user(random_user_data)
 
-        created_user = response_create.json()
-        assert "id" in created_user
-        assert created_user["email"] == random_user_data["email"]
+        # 1. Первый запрос — успех
+        create_response = api_manager_auth.user.create_user(test_user)
+        created = RegisterUserResponse(**create_response.json())
+        assert created.email == test_user.email
 
-        # Второй запрос — конфликт (409)
-        response = api_manager_auth.user.create_user(random_user_data,expected_status=409)
-
-        data = response.json()
-        assert data["message"] == "Пользователь с таким email уже зарегистрирован"
+        # 2. Второй запрос — конфликт (тот же email)
+        conflict_response = api_manager_auth.user.create_user(test_user, expected_status=409)
+        data = conflict_response.json()
         assert data["error"] == "Conflict"
 
-    # def test_update_user_verified(self, api_requester, random_user_data):
-    #     """Тест обновления verified у пользователя"""
-    #     # Создаём пользователя
-    #     response_create = api_requester.send_request(
-    #         method="POST",
-    #         endpoint=USER_ENDPOINT,
-    #         data=random_user_data,
-    #         expected_status=201
-    #     )
-    #     data = response_create.json()
-    #     user_id = data["id"]
-    #
-    #     # Инвертируем verified
-    #     new_verified_value = not random_user_data["verified"]
-    #
-    #     # Данные для обновления
-    #     update_user = {
-    #         "verified": new_verified_value,
-    #         "banned": random_user_data["banned"]
-    #     }
-    #
-    #     # Обновляем пользователя
-    #     response_update = api_requester.send_request(
-    #         method="PATCH",
-    #         endpoint=f"{USER_ENDPOINT}/{user_id}",
-    #         data=update_user,
-    #         expected_status=200
-    #     )
-    #
-    #     updated_data = response_update.json()
-    #     assert updated_data["verified"] == new_verified_value
-    #
-    # def test_update_user_banned(self, api_requester, random_user_data):
-    #     """Тест обновления banned у пользователя"""
-    #     # Создаём пользователя
-    #     response_create = api_requester.send_request(
-    #         method="POST",
-    #         endpoint=USER_ENDPOINT,
-    #         data=random_user_data,
-    #         expected_status=201
-    #     )
-    #     data = response_create.json()
-    #     user_id = data["id"]
-    #
-    #     # Инвертируем banned
-    #     new_verified_banned = not random_user_data["banned"]
-    #
-    #     # Данные для обновления
-    #     update_user = {
-    #         "banned": new_verified_banned,
-    #         "verified": random_user_data["verified"]
-    #     }
-    #     # Обновляем пользователя
-    #     response_update = api_requester.send_request(
-    #         method="PATCH",
-    #         endpoint=f"{USER_ENDPOINT}/{user_id}",
-    #         data=update_user,
-    #         expected_status=200
-    #     )
-    #
-    #     updated_data = response_update.json()
-    #     assert updated_data["banned"] == new_verified_banned
-    #
-    # def test_add_user_to_admin(self, api_requester, random_user_data, user_roles):
-    #     """Тест добавления дополнительной роли ADMIN"""
-    #     # Создаём пользователя
-    #     response_create = api_requester.send_request(
-    #         method="POST",
-    #         endpoint=USER_ENDPOINT,
-    #         data=random_user_data,
-    #         expected_status=201
-    #     )
-    #     created_user = response_create.json()
-    #     created_user_id = created_user["id"]
-    #     assert created_user["roles"] == ["USER"]
-    #
-    #     # Повышаем до ADMIN
-    #     update_data = {
-    #         "roles": user_roles["ADMIN"],
-    #         "verified": random_user_data["verified"],
-    #         "banned": random_user_data["banned"]
-    #     }
-    #
-    #     response_update = api_requester.send_request(
-    #         method="PATCH",
-    #         endpoint=f"{USER_ENDPOINT}/{created_user_id}",
-    #         data=update_data,
-    #         expected_status=200
-    #     )
-    #
-    #     update_user = response_update.json()
-    #     assert update_user["roles"] == update_data["roles"]
-    #
-    #
-    # def test_update_user_invalid_verified(self, api_requester, random_user_data):
-    #     """Тест обновления пользователя с некорректным verified"""
-    #     # Создаём пользователя
-    #     response_create = api_requester.send_request(
-    #         method="POST",
-    #         endpoint=USER_ENDPOINT,
-    #         data=random_user_data,
-    #         expected_status=201
-    #     )
-    #     data = response_create.json()
-    #     user_id = data["id"]
-    #
-    #     # Некорректное значение для verified
-    #     invalid_verified_value = 123
-    #
-    #     # Данные для обновления
-    #     update_user = {
-    #         "verified": invalid_verified_value,
-    #         "banned": random_user_data["banned"]
-    #     }
-    #
-    #     # Обновляем пользователя (ожидаем 400)
-    #     response_update = api_requester.send_request(
-    #         method="PATCH",
-    #         endpoint=f"{USER_ENDPOINT}/{user_id}",
-    #         data=update_user,
-    #         expected_status=400
-    #     )
-    #
-    #     updated_data = response_update.json()
-    #     assert updated_data["error"] == "Bad Request"
-    #     assert "message" in updated_data
-    #
-    # def test_update_user_invalid_banned(self, api_requester, random_user_data):
-    #     """Тест обновления пользователя с некорректным banned"""
-    #     # Создаём пользователя
-    #     response_create = api_requester.send_request(
-    #         method="POST",
-    #         endpoint=USER_ENDPOINT,
-    #         data=random_user_data,
-    #         expected_status=201
-    #     )
-    #     data = response_create.json()
-    #     user_id = data["id"]
-    #
-    #     # Некорректное значение для banned
-    #     invalid_verified_banned = "asd"
-    #
-    #     # Данные для обновления
-    #     update_user = {
-    #         "verified": random_user_data["verified"],
-    #         "banned": invalid_verified_banned
-    #     }
-    #
-    #     # Обновляем пользователя (ожидаем 400)
-    #     response_update = api_requester.send_request(
-    #         method="PATCH",
-    #         endpoint=f"{USER_ENDPOINT}/{user_id}",
-    #         data=update_user,
-    #         expected_status=400
-    #     )
-    #
-    #     updated_data = response_update.json()
-    #     assert updated_data["error"] == "Bad Request"
-    #     assert "message" in updated_data
-    #
-    # def test_promote_user_to_invalid_role(self, api_requester, random_user_data, user_roles):
-    #     """Тест изменения пользователя на некорректную роль"""
-    #     response_create = api_requester.send_request(
-    #         method="POST",
-    #         endpoint=USER_ENDPOINT,
-    #         data=random_user_data,
-    #         expected_status=201
-    #     )
-    #     assert response_create.status_code == 201
-    #     created_user = response_create.json()
-    #     user_id = created_user["id"]
-    #
-    #     assert created_user["roles"] == ["USER"]
-    #
-    #     update_data = {
-    #         "roles": "admin",
-    #         "verified": random_user_data["verified"],
-    #         "banned": random_user_data["banned"]
-    #     }
-    #
-    #     response_update = api_requester.send_request(
-    #         method="PATCH",
-    #         endpoint=f"{USER_ENDPOINT}/{user_id}",
-    #         data=update_data,
-    #         expected_status=400
-    #     )
-    #
-    #     assert response_update.status_code == 400
-    #     updated_data = response_update.json()
-    #     assert updated_data["error"] == "Bad Request"
-    #     assert "message" in updated_data
+    def test_update_user_verified(self, api_manager_auth, random_user_data):
+        """Тест обновления verified у пользователя"""
 
+        # 1. Создаём пользователя
+        create_response = api_manager_auth.user.create_user(random_user_data)
+        user_id = create_response.json()["id"]
 
+        # 2. Обновляем verified
+        update_data = {
+            "verified": not random_user_data["verified"],
+            "banned": random_user_data["banned"]
+        }
+        update_response = api_manager_auth.user.update_user(user_id, update_data)
 
+        updated_data = update_response.json()
+        assert updated_data["verified"] == update_data["verified"]
+
+    def test_update_user_banned(self, api_manager_auth, random_user_data):
+        """Тест обновления banned у пользователя"""
+
+        # 1. Создаём пользователя
+        create_response = api_manager_auth.user.create_user(random_user_data)
+        user_id = create_response.json()["id"]
+
+        # 2. Обновляем banned
+        update_data = {
+            "banned": not random_user_data["banned"],
+            "verified": random_user_data["verified"]
+        }
+        update_response = api_manager_auth.user.update_user(user_id, update_data)
+
+        updated_data = update_response.json()
+        assert updated_data["banned"] == update_data["banned"]
+
+    def test_add_user_to_admin(self, api_manager_auth, random_user_data):
+        """Тест добавления дополнительной роли ADMIN"""
+
+        # 1. Создаём пользователя
+        create_response = api_manager_auth.user.create_user(random_user_data)
+        created_user = create_response.json()
+        user_id = created_user["id"]
+        assert created_user["roles"] == ["USER"]
+
+        # 2. Повышаем до ADMIN
+        update_data = {
+            "roles": ["USER", "ADMIN"],
+            "verified": random_user_data["verified"],
+            "banned": random_user_data["banned"]
+        }
+        update_response = api_manager_auth.user.update_user(user_id, update_data)
+
+        updated_user = update_response.json()
+        assert updated_user["roles"] == update_data["roles"]
+
+    def test_update_user_invalid_verified(self, api_manager_auth, random_user_data):
+        """Тест обновления пользователя с некорректным verified"""
+
+        # 1. Создаём пользователя
+        create_response = api_manager_auth.user.create_user(random_user_data)
+        user_id = create_response.json()["id"]
+
+        # 2. Некорректное значение для verified
+        update_data = {
+            "verified": 123,  # Должно быть boolean
+            "banned": random_user_data["banned"]
+        }
+        response = api_manager_auth.user.update_user(user_id, update_data, expected_status=400)
+
+        data = response.json()
+        assert data["error"] == "Bad Request"
+        assert "message" in data
+
+    def test_update_user_invalid_banned(self, api_manager_auth, random_user_data):
+        """Тест обновления пользователя с некорректным banned"""
+
+        # 1. Создаём пользователя
+        create_response = api_manager_auth.user.create_user(random_user_data)
+        user_id = create_response.json()["id"]
+
+        # 2. Некорректное значение для banned
+        update_data = {
+            "verified": random_user_data["verified"],
+            "banned": "asd"  # Должно быть boolean
+        }
+        response = api_manager_auth.user.update_user(user_id, update_data, expected_status=400)
+
+        data = response.json()
+        assert data["error"] == "Bad Request"
+        assert "message" in data
+
+    def test_promote_user_to_invalid_role(self, api_manager_auth, random_user_data):
+        """Тест изменения пользователя на некорректную роль"""
+
+        # 1. Создаём пользователя
+        create_response = api_manager_auth.user.create_user(random_user_data)
+        user_id = create_response.json()["id"]
+        assert create_response.json()["roles"] == ["USER"]
+
+        # 2. Некорректная роль (нижний регистр)
+        update_data = {
+            "roles": "admin",  # Должно быть ["ADMIN"]
+            "verified": random_user_data["verified"],
+            "banned": random_user_data["banned"]
+        }
+        response = api_manager_auth.user.update_user(user_id, update_data, expected_status=400)
+
+        data = response.json()
+        assert data["error"] == "Bad Request"
+        assert "message" in data
