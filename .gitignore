@@ -49,3 +49,7 @@ htmlcov/
 # === Системные файлы ===
 .DS_Store
 Thumbs.db
+
+# Allure reports
+allure-results/
+allure-report/

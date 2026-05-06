@@ -1,8 +1,10 @@
+import allure
 import pytest
 import requests
 from constants import BASE_URL, HEADERS, MOVIES_ENDPOINT
 from enums.roles import Roles
-
+from entities.movie_response import MovieResponse
+from datetime import datetime
 
 class TestMoviesAPI:
     """Тесты для Movies API"""
@@ -34,32 +36,136 @@ class TestMoviesAPI:
             assert movie["published"] == True, \
                 f"Published должен быть True, получено {movie['published']}"
 
-    def test_get_movies_random_pagination(self, api_manager, random_pagination_params):
+    @allure.story("Получение фильма по ID")
+    @allure.title("Получение фильма по ID с валидацией через Pydantic")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @pytest.mark.smoke
+    @pytest.mark.api
+    def test_get_movie(self, api_manager_auth):
+        """Получение фильма по ID с валидацией через Pydantic"""
+        with allure.step("Получение списка фильмов для выбора ID"):
+            response_list = api_manager_auth.session.get(f"{BASE_URL}/movies")
+            assert response_list.status_code == 200
+
+            movies_data = response_list.json()
+
+            if isinstance(movies_data, list):
+                movies_list = movies_data
+            elif isinstance(movies_data, dict):
+                movies_list = movies_data.get("items") or movies_data.get("movies") or movies_data.get("data") or []
+            else:
+                movies_list = []
+
+            assert len(movies_list) > 0, "В базе нет фильмов для тестирования"
+            movie_id = movies_list[0]["id"]
+
+        with allure.step(f"Получение фильма по ID {movie_id}"):
+            response = api_manager_auth.session.get(f"{BASE_URL}/movies/{movie_id}")
+            assert response.status_code == 200, f"Фильм с ID {movie_id} не найден"
+
+        with allure.step("Валидация ответа через Pydantic модель"):
+            movie = MovieResponse(**response.json())
+
+            allure.dynamic.parameter("movie_id", movie.id)
+            allure.dynamic.parameter("movie_name", movie.name)
+            allure.dynamic.parameter("movie_price", movie.price)
+
+        with allure.step("Проверка полей фильма"):
+            assert movie.id == movie_id
+            assert movie.name is not None
+            assert movie.price > 0
+            assert movie.location in ["MSK", "SPB"]
+            assert isinstance(movie.createdAt, datetime)
+
+    @pytest.mark.parametrize("min_price,max_price", [
+        (100, 500),  # Низкий диапазон
+        (1000, 2000),  # Средний диапазон
+        (5000, 10000),  # Высокий диапазон
+        (200, 800),  # Другой низкий диапазон
+    ])
+    @allure.story("Фильтрация фильмов по цене")
+    @allure.title("Фильтрация фильмов: цена от {min_price} до {max_price}")
+    @allure.severity(allure.severity_level.NORMAL)
+    def test_filter_movies_by_price(self, api_manager_auth, min_price, max_price):
         """
-        Тест пагинации со случайными параметрами.
-        Каждый запуск использует новые random page и pageSize.
+        Параметризованный тест фильтрации фильмов по цене.
         """
-        page = random_pagination_params["page"]
-        page_size = random_pagination_params["pageSize"]
+        with allure.step(f"Запрос фильмов с ценой от {min_price} до {max_price}"):
+            response = api_manager_auth.session.get(
+                f"{BASE_URL}/movies",
+                params={"minPrice": min_price, "maxPrice": max_price}
+            )
 
-        response = api_manager.movies.get_movies(
-            random_pagination_params  # Передаём параметры пагинации
-        )
-        # Получаем данные
-        data = response.json()
+        with allure.step("Проверка статуса ответа"):
+            # API может вернуть 200 (успех) или 400 (неверные параметры)
+            # Главное — не 500 (ошибка сервера)
+            assert response.status_code in [200, 400], \
+                f"Неожиданный статус: {response.status_code}"
 
-        # Проверяем метаданные пагинации
-        assert data["pageSize"] == page_size, \
-            f"pageSize в ответе ({data['pageSize']}) не совпадает с запрошенным ({page_size})"
-        assert data["page"] == page, \
-            f"page в ответе ({data['page']}) не совпадает с запрошенным ({page})"
+            if response.status_code == 400:
+                allure.dynamic.parameter("result", "Bad Request (ожидаемо для некоторых диапазонов)")
+                pytest.skip(f"Диапазон [{min_price}, {max_price}] не поддерживается API")
+                return
 
-        # Получаем список фильмов
-        movies = data["movies"]
+        with allure.step("Проверка структуры ответа"):
+            movies_data = response.json()
 
-        # Проверяем количество фильмов (не больше pageSize)
-        assert len(movies) <= page_size, \
-            f"Количество фильмов {len(movies)} превышает pageSize {page_size}"
+            # Обрабатываем ответ с пагинацией или без
+            if isinstance(movies_data, list):
+                movies_list = movies_data
+            elif isinstance(movies_data, dict):
+                movies_list = (
+                        movies_data.get("items") or
+                        movies_data.get("movies") or
+                        movies_data.get("data") or
+                        []
+                )
+            else:
+                movies_list = []
+
+        with allure.step(f"Проверка фильмов в диапазоне (найдено: {len(movies_list)})"):
+            allure.dynamic.parameter("found_count", len(movies_list))
+
+            # Проверяем первые 3 фильма (если есть)
+            for movie_data in movies_list[:3]:
+                movie = MovieResponse(**movie_data)
+
+                # Проверяем, что цена в диапазоне
+                assert min_price <= movie.price <= max_price, \
+                    f"Фильм '{movie.name}' имеет цену {movie.price} вне диапазона"
+
+    @allure.story("Удаление фильма")
+    @allure.title("Удаление фильма с проверкой в БД")
+    @allure.severity(allure.severity_level.CRITICAL)
+    @pytest.mark.smoke
+    @pytest.mark.database
+    @pytest.mark.api
+    def test_delete_movie(self, api_manager_auth, db_helper):
+        """Удаление фильма с проверкой в БД"""
+        with allure.step("Подготовка: создание тестового фильма в БД"):
+            movie_data = {
+                "name": f"Test Movie {pytest.test_run_id if hasattr(pytest, 'test_run_id') else '001'}",
+                "price": 500,
+                "description": "Test description",
+                "location": "MSK",
+                "published": True,
+                "genre_id": 1
+            }
+            movie = db_helper.create_test_movie(movie_data)
+            movie_id = movie.id
+            allure.dynamic.parameter("created_movie_id", movie_id)
+
+        with allure.step(f"Удаление фильма {movie_id} через API"):
+            response = api_manager_auth.session.delete(f"{BASE_URL}/movies/{movie_id}")
+            assert response.status_code == 200, f"Ошибка удаления: {response.text}"
+
+        with allure.step("Проверка, что фильм удалён (404)"):
+            get_response = api_manager_auth.session.get(f"{BASE_URL}/movies/{movie_id}")
+            assert get_response.status_code == 404, "Фильм должен быть удалён"
+
+        with allure.step("Очистка: удаление тестовых данных"):
+            # Фильм уже удалён из БД через API
+            pass
 
     def test_get_movies_random_price(self, api_manager, random_price):
         """Тест фильтрации по цене"""

@@ -13,6 +13,13 @@ from enums.roles import Roles
 import uuid
 from entities.api_models import UserCreate, MovieCreate
 from models.base_models import TestUser
+# ИМПОРТЫ ДЛЯ БД:
+from sqlalchemy.orm import Session
+from db_requester.db_client import get_db_session
+from db_requester.db_helpers import DBHelper
+from db_models.user import UserDBModel
+from db_models.movies import MovieDBModel
+from utils.data_generator import DataGenerator
 
 
 @pytest.fixture(scope="session")
@@ -413,3 +420,50 @@ def registration_user_data():
         "passwordRepeat": random_password,
         "roles": [Roles.USER.value]
     }
+
+# ========== ФИКСТУРЫ ДЛЯ БД ==========
+
+@pytest.fixture(scope="module")
+def db_session() -> Session:
+    """
+    Фикстура, которая создает и возвращает сессию для работы с БД.
+    После завершения теста сессия автоматически закрывается.
+    """
+    session = get_db_session()
+    yield session
+    session.close()
+
+
+@pytest.fixture(scope="function")
+def db_helper(db_session: Session) -> DBHelper:
+    """
+    Фикстура для экземпляра хелпера.
+    scope="function" — новая сессия для каждого теста (изоляция).
+    """
+    return DBHelper(db_session)
+
+
+@pytest.fixture(scope="function")
+def created_test_user(db_helper: DBHelper) -> UserDBModel:
+    """
+    Фикстура, которая создает тестового пользователя в БД
+    и удаляет его после завершения теста.
+    """
+    user = db_helper.create_test_user(DataGenerator.generate_user_data_for_db())
+    yield user
+    # Cleanup после теста
+    if db_helper.get_user_by_id(user.id):
+        db_helper.delete_user(user)
+
+
+@pytest.fixture(scope="function")
+def created_test_movie(db_helper: DBHelper) -> MovieDBModel:
+    """
+    Фикстура, которая создает тестовый фильм в БД
+    и удаляет его после завершения теста.
+    """
+    movie = db_helper.create_test_movie(DataGenerator.generate_movie_data())
+    yield movie
+    # Cleanup после теста
+    if db_helper.get_movie_by_id(movie.id):
+        db_helper.delete_movie(movie)
