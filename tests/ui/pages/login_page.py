@@ -9,6 +9,7 @@ class CinescopeLoginPage(BasePage):
         super().__init__(page)
         self.url = "https://dev-cinescope.coconutqa.ru/login"
 
+        # Локаторы
         self.email_input = "input[name='email']"
         self.password_input = "input[name='password']"
         self.login_button = "button[type='submit']:has-text('Войти')"
@@ -20,11 +21,11 @@ class CinescopeLoginPage(BasePage):
 
     @allure.step("Ввести email: {email}")
     def enter_email(self, email: str):
-        self.fill(self.email_input, email)
+        self.enter_text(self.email_input, email)
 
     @allure.step("Ввести пароль")
     def enter_password(self, password: str):
-        self.fill(self.password_input, password)
+        self.enter_text(self.password_input, password)
 
     @allure.step("Нажать 'Войти'")
     def click_login_button(self):
@@ -32,7 +33,6 @@ class CinescopeLoginPage(BasePage):
 
     @allure.step("Логин: {email}")
     def login(self, email: str, password: str):
-        """Полный процесс входа"""
         self.enter_email(email)
         self.enter_password(password)
         self.click_login_button()
@@ -40,10 +40,11 @@ class CinescopeLoginPage(BasePage):
     @allure.step("Ожидать главную страницу")
     def wait_redirect_to_home_page(self):
         self.wait_for_url("https://dev-cinescope.coconutqa.ru/")
-        assert self.page.url == "https://dev-cinescope.coconutqa.ru/"
+        self.assert_url("https://dev-cinescope.coconutqa.ru/")
 
     @allure.step("Проверить уведомление: {text}")
     def check_alert(self, text: str = "Вы вошли в аккаунт"):
         notification = self.page.get_by_text(text)
         notification.wait_for(state="visible")
+        self.assert_text_present(text)
         self.take_screenshot("login_success")
