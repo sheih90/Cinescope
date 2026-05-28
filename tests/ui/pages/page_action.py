@@ -1,65 +1,51 @@
 import allure
-from playwright.sync_api import Page, Locator
-from typing import Optional
+from playwright.sync_api import Page
+import os
+from datetime import datetime
 
 
 class PageAction:
-    """Базовый класс с общими действиями для всех страниц"""
+    """Базовый класс с минимальными общими действиями"""
 
     def __init__(self, page: Page):
         self.page = page
 
-    @allure.step("Нажать на элемент: {locator}")
+    @allure.step("Перейти на страницу: {url}")
+    def goto(self, url: str):
+        """Переход на URL"""
+        self.page.goto(url)
+
+    @allure.step("Клик: {locator}")
     def click(self, locator: str):
         """Клик по элементу"""
         self.page.locator(locator).click()
 
-    @allure.step("Заполнить поле {locator} значение: {value}")
+    @allure.step("Ввод текста: {locator} = {value}")
     def fill(self, locator: str, value: str):
-        """Заполнение поля ввода"""
+        """Ввод текста в поле"""
         self.page.locator(locator).fill(value)
 
-    @allure.step("Ожидать видимости элемента: {locator}")
+    @allure.step("Ожидание видимости: {locator}")
     def wait_for_visible(self, locator: str, timeout: int = 10000):
         """Ожидание видимости элемента"""
         self.page.locator(locator).wait_for(state="visible", timeout=timeout)
 
-    @allure.step("Ожидать исчезновения элемента: {locator}")
-    def wait_for_hidden(self, locator: str, timeout: int = 10000):
-        """Ожидание исчезновения элемента"""
-        self.page.locator(locator).wait_for(state="hidden", timeout=timeout)
-
-    @allure.step("Ожидать URL: {url}")
+    @allure.step("Ожидание URL: {url}")
     def wait_for_url(self, url: str, timeout: int = 10000):
         """Ожидание перехода на URL"""
         self.page.wait_for_url(url, timeout=timeout)
 
-    @allure.step("Перейти по URL: {url}")
-    def goto(self, url: str):
-        """Переход на страницу"""
-        self.page.goto(url)
-
-    @allure.step("Получить текст элемента: {locator}")
-    def get_text(self, locator: str) -> str:
-        """Получение текста элемента"""
-        return self.page.locator(locator).inner_text()
-
-    @allure.step("Проверить видимость элемента: {locator}")
-    def is_visible(self, locator: str) -> bool:
-        """Проверка видимости элемента"""
-        return self.page.locator(locator).is_visible()
-
-    @allure.step("Проверить существование элемента: {locator}")
-    def is_element_present(self, locator: str) -> bool:
-        """Проверка существования элемента на странице"""
-        return self.page.locator(locator).count() > 0
-
-    @allure.step("Сделать скриншот: {name}")
+    @allure.step("Скриншот: {name}")
     def take_screenshot(self, name: str = "screenshot"):
-        """Делает скриншот и прикрепляет его к Allure отчёту"""
+        """Скриншот с сохранением в папку и в Allure"""
+        screenshot_dir = "tests/screenshots"
+        os.makedirs(screenshot_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filepath = os.path.join(screenshot_dir, f"{name}_{timestamp}.png")
+
         screenshot = self.page.screenshot()
-        allure.attach(
-            screenshot,
-            name=name,
-            attachment_type=allure.attachment_type.PNG
-        )
+        with open(filepath, "wb") as f:
+            f.write(screenshot)
+
+        allure.attach(screenshot, name=name, attachment_type=allure.attachment_type.PNG)

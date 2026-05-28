@@ -57,3 +57,7 @@ allure-report/
 # Временные файлы Playwright
 files/playwright_trace/
 *.zip
+
+# Скриншоты тестов
+tests/screenshots/
+*.png
