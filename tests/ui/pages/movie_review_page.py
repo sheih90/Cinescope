@@ -8,6 +8,7 @@ class MovieReviewPage(BasePage):
     def __init__(self, page):
         super().__init__(page)
         self.base_url = "https://dev-cinescope.coconutqa.ru/movies/"
+        self.movie_id = ""
 
         # Локаторы
         self.review_textarea = "textarea[placeholder='Написать отзыв']"
@@ -16,7 +17,10 @@ class MovieReviewPage(BasePage):
 
     @allure.step("Открыть страницу фильма: {movie_id}")
     def open_movie_page(self, movie_id: str):
-        self.goto(f"{self.base_url}{movie_id}")
+        """Открытие страницы конкретного фильма"""
+        self.movie_id = movie_id
+        self.url = f"{self.base_url}{movie_id}"
+        self.open()  # используем метод из BasePage
 
     @allure.step("Ввести текст отзыва: {text}")
     def write_review_text(self, text: str):
@@ -40,7 +44,5 @@ class MovieReviewPage(BasePage):
 
     @allure.step("Проверить появление отзыва")
     def check_review_appeared(self, review_text: str):
-        """Проверка, что отзыв появился"""
-        # Используем базовый метод проверки текста
         self.assert_text_present(review_text)
         self.take_screenshot("review_submitted")

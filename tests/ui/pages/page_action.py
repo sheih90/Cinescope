@@ -20,10 +20,6 @@ class PageAction:
     def click(self, locator: str):
         self.page.locator(locator).click()
 
-    @allure.step("Ввод текста: {locator} = {value}")
-    def fill(self, locator: str, value: str):
-        self.page.locator(locator).fill(value)
-
     @allure.step("Ожидание видимости: {locator}")
     def wait_for_visible(self, locator: str, timeout: int = 10000):
         self.page.locator(locator).wait_for(state="visible", timeout=timeout)

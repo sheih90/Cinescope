@@ -1,9 +1,9 @@
 import allure
 import pytest
 from playwright.sync_api import Page
-from .pages.register_page import CinescopeRegisterPage
-from .pages.login_page import CinescopeLoginPage
-from .pages.movie_review_page import MovieReviewPage
+from tests.ui.pages.register_page import CinescopeRegisterPage
+from tests.ui.pages.login_page import CinescopeLoginPage
+from tests.ui.pages.movie_review_page import MovieReviewPage
 from random import randint, choice
 
 

@@ -16,9 +16,6 @@ class CinescopeRegisterPage(BasePage):
         self.repeat_password_input = "input[name='passwordRepeat']"
         self.register_button = "button[type='submit']:has-text('Зарегистрироваться')"
 
-    @allure.step("Открыть страницу регистрации")
-    def open(self):
-        self.goto(self.url)
 
     @allure.step("Ввести ФИО: {full_name}")
     def enter_full_name(self, full_name: str):
@@ -50,13 +47,10 @@ class CinescopeRegisterPage(BasePage):
 
     @allure.step("Ожидать редирект на логин")
     def wait_redirect_to_login_page(self):
-        self.wait_for_url("https://dev-cinescope.coconutqa.ru/login")
-        self.assert_url("https://dev-cinescope.coconutqa.ru/login")
+        # Используем универсальный метод из BasePage
+        self.wait_redirect_to("https://dev-cinescope.coconutqa.ru/login")
 
-    @allure.step("Проверить уведомление: {text}")
+    @allure.step("Проверить уведомление о регистрации")
     def check_alert(self, text: str = "Подтвердите свою почту"):
-        notification = self.page.get_by_text(text)
-        notification.wait_for(state="visible")
-        self.assert_text_present(text)
-        self.take_screenshot("registration_success")
-        notification.wait_for(state="hidden")
+        # Используем метод из BasePage с кастомным скриншотом
+        super().check_alert(text, "registration_success")

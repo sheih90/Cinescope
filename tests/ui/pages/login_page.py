@@ -15,9 +15,6 @@ class CinescopeLoginPage(BasePage):
         self.login_button = "button[type='submit']:has-text('Войти')"
         self.register_button = "a[href='/register' and text()='Зарегистрироваться']"
 
-    @allure.step("Открыть страницу входа")
-    def open(self):
-        self.goto(self.url)
 
     @allure.step("Ввести email: {email}")
     def enter_email(self, email: str):
@@ -39,12 +36,10 @@ class CinescopeLoginPage(BasePage):
 
     @allure.step("Ожидать главную страницу")
     def wait_redirect_to_home_page(self):
-        self.wait_for_url("https://dev-cinescope.coconutqa.ru/")
-        self.assert_url("https://dev-cinescope.coconutqa.ru/")
+        # Используем универсальный метод из BasePage
+        self.wait_redirect_to("https://dev-cinescope.coconutqa.ru/")
 
-    @allure.step("Проверить уведомление: {text}")
+    @allure.step("Проверить уведомление о входе")
     def check_alert(self, text: str = "Вы вошли в аккаунт"):
-        notification = self.page.get_by_text(text)
-        notification.wait_for(state="visible")
-        self.assert_text_present(text)
-        self.take_screenshot("login_success")
+        # Используем метод из BasePage с кастомным скриншотом
+        super().check_alert(text, "login_success")
