@@ -15,14 +15,9 @@ class CinescopeLoginPage(BasePage):
         self.login_button = "button[type='submit']:has-text('Войти')"
         self.register_button = "a[href='/register' and text()='Зарегистрироваться']"
 
-
     @allure.step("Ввести email: {email}")
     def enter_email(self, email: str):
         self.enter_text(self.email_input, email)
-
-    @allure.step("Ввести пароль")
-    def enter_password(self, password: str):
-        self.enter_text(self.password_input, password)
 
     @allure.step("Нажать 'Войти'")
     def click_login_button(self):
@@ -31,7 +26,7 @@ class CinescopeLoginPage(BasePage):
     @allure.step("Логин: {email}")
     def login(self, email: str, password: str):
         self.enter_email(email)
-        self.enter_password(password)
+        self.enter_password(self.password_input, password)
         self.click_login_button()
 
     @allure.step("Ожидать главную страницу")

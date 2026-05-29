@@ -35,6 +35,11 @@ class PageAction:
         """Универсальный метод ввода текста"""
         self.page.locator(locator).fill(text)
 
+    @allure.step("Ввести пароль: {password}")
+    def enter_password(self, locator: str, password: str):
+        """Универсальный метод ввода пароля"""
+        self.page.locator(locator).fill(password)
+
     @allure.step("Очистить поле: {locator}")
     def clear_field(self, locator: str):
         self.page.locator(locator).clear()
@@ -58,7 +63,6 @@ class PageAction:
     @allure.step("Проверить URL: {expected_url}")
     def assert_url(self, expected_url: str):
         """Проверка текущего URL"""
-        # Playwright support exact URL match
         expect(self.page).to_have_url(expected_url, timeout=10000)
 
     @allure.step("Проверить значение поля: {locator}")

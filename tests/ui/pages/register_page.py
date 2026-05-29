@@ -16,7 +16,6 @@ class CinescopeRegisterPage(BasePage):
         self.repeat_password_input = "input[name='passwordRepeat']"
         self.register_button = "button[type='submit']:has-text('Зарегистрироваться')"
 
-
     @allure.step("Ввести ФИО: {full_name}")
     def enter_full_name(self, full_name: str):
         self.enter_text(self.full_name_input, full_name)
@@ -24,10 +23,6 @@ class CinescopeRegisterPage(BasePage):
     @allure.step("Ввести email: {email}")
     def enter_email(self, email: str):
         self.enter_text(self.email_input, email)
-
-    @allure.step("Ввести пароль")
-    def enter_password(self, password: str):
-        self.enter_text(self.password_input, password)
 
     @allure.step("Ввести повтор пароля")
     def enter_repeat_password(self, password: str):
@@ -41,7 +36,7 @@ class CinescopeRegisterPage(BasePage):
     def register(self, full_name: str, email: str, password: str, confirm_password: str):
         self.enter_full_name(full_name)
         self.enter_email(email)
-        self.enter_password(password)
+        self.enter_password(self.password_input, password)
         self.enter_repeat_password(confirm_password)
         self.click_register_button()
 

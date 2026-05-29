@@ -13,8 +13,8 @@ def test_register_and_login(page: Page):
     password = "StrongPassword123"
     full_name = "Дамир Тестовый"
 
-    print(f"📧 Email: {unique_email}")
-    print(f"🔑 Пароль: {password}")
+    print(f"Email: {unique_email}")
+    print(f"Пароль: {password}")
 
     # ========== ШАГ 1: РЕГИСТРАЦИЯ ==========
     register_page = CinescopeRegisterPage(page)
